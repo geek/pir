@@ -57,6 +57,7 @@ internals.openSerial = function (settings, callback) {
 internals.wireEvents = function (serial, settings, callback) {
   var mouth = new CowboyMouth(serial);
   mouth.on('reading', function (data) {
+    var chunk = JSON.stringify(data, null, '  ');
     file.write(chunk + '\n');
     internals.transmit(chunk);
   });
@@ -80,32 +81,41 @@ internals.startServer = function (callback) {
 
   var ws = new Ws.Server({ server: server, path: '/arduino' });
   ws.on('connection', function (socket) {
-      socket.send('connected...');
-      if (internals.addons.length) {
-        var msg = '<h4>Addons:<h4><div id="addons">' + JSON.stringify(internals.addons, null, '  ') + '</div>';
-        socket.send(msg);
-      }
+    socket.send('connected...');
+    if (internals.addons.length) {
+      var msg = '<h4>Addons:</h4><div id="addons">' + JSON.stringify(internals.addons, null, '  ') + '</div>';
+      socket.send(msg);
+    }
   });
 
   internals.webSockets.push(ws)
 };
 
 internals.transmit = function (data) {
-  try {
-    internals.webSockets.forEach(function (ws) {
-      for (var i = 0, il = ws.clients.length; i < il; ++i) {
-        ws.clients[i].send(data.toString());
-      }
-    });
+  if (!internals.webSockets) {
+    return;
   }
-  catch (err) {}
+  internals.webSockets.forEach(function (ws) {
+    if (ws && ws.clients && ws.clients.length) {
+      for (var i = 0, il = ws.clients.length; i < il; ++i) {
+        try {
+          ws.clients[i].send(data.toString(), function (err) {
+            if (err) {
+              delete ws.clients[i];
+            }
+          });
+        }
+        catch (err) {}
+      }
+    }
+  });
 };
 
 
-internals.markup = '<!DOCTYPE html><html lang="en"><head><title>Debug Terminal</title>' +
+internals.markup = '<!DOCTYPE html><html lang="en"><head><title>Connected Devices</title>' +
     '<meta http-equiv="Content-Language" content="en-us">' +
     '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">' +
-    '</head><body><h1>Events</h1><div id="content"></div>' +
+    '</head><body><div id="content"></div>' +
     '<script language="javascript">' +
     'var content = document.getElementById("content"); ' +
     'var protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; ' +
